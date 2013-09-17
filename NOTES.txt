@@ -34,7 +34,7 @@
   line of the kernel stack trace.  Sometimes, though, it happens in the qdisk
   code for transmission or the e1000 driver itself instead.  It is ALMOST
   always a "BUG: unable to handle kernel NULL pointer dereference", but rarely
-  I have seen a general protection fault intead.
+  I have seen a general protection fault instead.
 
 * The first implementation sent SKBs endlessly and without pause.  This caused
   a panic much quicker.  The code was then changed to limit the number of
@@ -55,24 +55,29 @@
   later memory allocation operation.
 
 * When an SKB's reference count is incremented to 2 just before calling
-  dev_queue_xmit() a kernel panic still occurs, but takes the relatively long
-  and varying period of execution mentioned above.  On the VM I am testing on,
-  this is usually anywhere between 15 seconds and 2 minutes.
+  dev_queue_xmit(), the destructor seems to be called just once (this can be
+  tested by uncommenting a couple of printk's in the code and loading the
+  module with parameter "n=x" to send x frames before terminating the send
+  thread, then checking the messages using dmesg, grep, wc, etc.).  With this
+  reference count fix the kernel panic still occurs, but only after the
+  relatively long and varying period of execution mentioned above (generally
+  after hundreds of thousands of frames).  On the VM I am testing on, the panic
+  usually happens after somewhere between 15 seconds and 2 minutes.
 
 * My best guess is that SOMETHING is overwriting memory with null bytes or
   random data or soemthing.  Is there something wrong with the way the SKBs are
-  being prepared, turned over to the kernel for transmission, cleaned up, etc.?
-  If so, how is it different from the ARP implementation in a way that causes
-  a panic?  Or is this a defect in the kernel code itself, in which case how
-  can machines stay stable and running with significant uptimes?  Or is it just
-  that this is a very infrequent race condition of some sort and ARP
-  transmission is slow/infrequent enough that the mean time before failure is
-  very, very long?
+  being allocated, prepared, turned over to the kernel for transmission,
+  cleaned up, etc.?  If so, how is it different from the ARP implementation in
+  a way that causes a panic?  Or is this a defect in the kernel code itself, in
+  which case how can Linux machines stay stable and running with significant
+  uptimes?  Or is it just that this is a very infrequent race condition of some
+  sort and ARP transmission is slow/infrequent enough that the mean time before
+  failure is very, very long?
 
 * I have attempted both kernel debugging and panic message capture, but despite
   following all the instructions I can find online for doing this with a
   VirtualBox VM, I cannot seem to get the debugger to resume execution properly
   when debugging, the emulated serial console to work, or a crash dump to
-  appear in the VM after restart.  So we seem to be stuck with code inspection
+  appear in the VM after restart.  So I seem to be stuck with code inspection
   and good ol' printk-style debugging, unfortunately.
 
