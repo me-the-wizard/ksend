@@ -36,6 +36,14 @@
   always a "BUG: unable to handle kernel NULL pointer dereference", but rarely
   I have seen a general protection fault intead.
 
+* The first implementation sent SKBs endlessly and without pause.  This caused
+  a panic much quicker.  The code was then changed to limit the number of
+  outstanding SKBs pending in the transmit code, similar to the way a socket's
+  limited amount of buffer space would (but done using a simple counter).  This
+  results in the same sort of panic, but after a longer period of time since
+  the sned rate is naturally lower.  Counting the number of outstanding SKBs
+  also resulted in the discovery of an SKB reference counting problem.
+
 * Calling dev_queue_xmit() with an SKB is supposed to turn ownership of the SKB
   over to the transmit code, according to the API documentation in
   net/core/dev.c.  This would seem to imply the reference count should be 1,
