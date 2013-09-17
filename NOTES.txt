@@ -1,0 +1,70 @@
+* Running on a VirtualBox VM with 64-bit Ubuntu 12.10 and the 3.5.0-40-generic
+  kernel (and matching kernel headers for module compilation).  The VM has been
+  allocated 4 CPU cores and 2GB of memory (it has no swap partition).  The
+  module had been tested on a previous kernel version (also 3.5.0-x) and
+  exhibited the same symptoms.  The network adapter set in VirtualBox is the
+  default "Intel PRO/1000 MT Desktop (82540EM)", and uses the e1000 driver
+  (drivers/net/ethernet/intel/e1000).  However, other adapters in VirtuaBox's
+  list of choices that use different drivers have also been tested with the
+  same results.
+
+* The idea of the module is to resend/replay frames previously captured on the
+  same network interface.  The frames are byte-for-byte identical to one
+  originally captured.  The captured frame was an ICMP echo reply captured
+  during ping execution between the host machine and the VM, on the same
+  interface being tested (eth0 set to static 192.168.56.10/24 on a VirtualBox
+  host-only network); the packet was manually inspected to verify it is a valid
+  Ethernet/IPv4/ICMP/echo reply message with correct checksums.  This small
+  module is a stripped down test case created after running into the problem in
+  a larger project (one which DOES send packets associated with a socket).
+
+* The frames are sent without a socket, in a manner similar to the way they are
+  created and sent for IPv4 ARP.  In fact, the frames are constructed and sent
+  in a way that is almost identical to the way net/ipv4/arp.c does it.  The
+  exception is that this module uses complete frame data including the Ethernet
+  header, unlike ARP which adds the hardware header using dev_hard_header().
+  This module has been tested by changing the code to use dev_hard_header() in
+  an attempt to diagnose the problem, but this does not change the behavior.
+
+* A kernel panic occurs after sending one or more frames using this module.
+  The number of frames sent before the panic occurs seems to vary, but it is
+  inevitable that one occurs.  The panic does not always occur in the same
+  place in kernel code, but usually happens somewhere in __kfree_skb()—perhaps
+  in skb_release_head_state() as "? skb_release_head_state+..." is the last
+  line of the kernel stack trace.  Sometimes, though, it happens in the qdisk
+  code for transmission or the e1000 driver itself instead.  It is ALMOST
+  always a "BUG: unable to handle kernel NULL pointer dereference", but rarely
+  I have seen a general protection fault intead.
+
+* Calling dev_queue_xmit() with an SKB is supposed to turn ownership of the SKB
+  over to the transmit code, according to the API documentation in
+  net/core/dev.c.  This would seem to imply the reference count should be 1,
+  and that reference is turned over to the callee.  However, when the reference
+  count is only 1, the transmit code destructs each SKB twice, meaning
+  somewhere it must be decrementing the reference count and assuming it is
+  still positive, then later incrementing and decrementing it again.  This
+  causes an immediate kernel panic in either the code to free the SKB or in a
+  later memory allocation operation.
+
+* When an SKB's reference count is incremented to 2 just before calling
+  dev_queue_xmit() a kernel panic still occurs, but takes the relatively long
+  and varying period of execution mentioned above.  On the VM I am testing on,
+  this is usually anywhere between 15 seconds and 2 minutes.
+
+* My best guess is that SOMETHING is overwriting memory with null bytes or
+  random data or soemthing.  Is there something wrong with the way the SKBs are
+  being prepared, turned over to the kernel for transmission, cleaned up, etc.?
+  If so, how is it different from the ARP implementation in a way that causes
+  a panic?  Or is this a defect in the kernel code itself, in which case how
+  can machines stay stable and running with significant uptimes?  Or is it just
+  that this is a very infrequent race condition of some sort and ARP
+  transmission is slow/infrequent enough that the mean time before failure is
+  very, very long?
+
+* I have attempted both kernel debugging and panic message capture, but despite
+  following all the instructions I can find online for doing this with a
+  VirtualBox VM, I cannot seem to get the debugger to resume execution properly
+  when debugging, the emulated serial console to work, or a crash dump to
+  appear in the VM after restart.  So we seem to be stuck with code inspection
+  and good ol' printk-style debugging, unfortunately.
+
