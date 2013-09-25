@@ -8,6 +8,10 @@
   list of choices that use different drivers have also been tested with the
   same results.
 
+* I have also tested this code on bare metal with a network card using Intel's
+  igb driver and on a VM with a compiled 2.6.39 kernel using all default
+  configuration parameters, with the same results.
+
 * The idea of the module is to resend/replay frames previously captured on the
   same network interface.  The frames are byte-for-byte identical to one
   originally captured.  The captured frame was an ICMP echo reply captured
